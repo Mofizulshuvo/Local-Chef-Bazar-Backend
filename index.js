@@ -29,8 +29,6 @@ async function run() {
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
 
-
-
     const user_Collection = DB.collection("user");
 
     app.get("/users", async (req, res) => {
@@ -56,8 +54,6 @@ async function run() {
       const meals = await db.collection("meals").find().toArray();
       res.json(meals);
     });
-
-
 
     // Orders
     app.post("/orders", async (req, res) => {
@@ -95,63 +91,40 @@ async function run() {
       res.send(favorites);
     });
 
+    //  app.get("/users/:uid", async (req, res) => {
+    // const { uid } = req.params;
 
-
-  //  app.get("/users/:uid", async (req, res) => {
-  // const { uid } = req.params;
-  
-  //for checking userRole
-  app.get("/users/:uid",(req,res)=>{
-    const {uid}=req.params;
-    const user = UserCollection.findOne({ uid: uid });
-    if (!user){
-      return res.status(404).send("User not found");
-    }
-    else{
-      return res.send(user);
-    }
-  })
-
-
-//for updating User Role
-app.put("/users/:uid/role", async (req, res) => {
-  const { uid } = req.params;
-  const { role } = req.body; // expected: "user", "chef", "admin"
-
-  try {
-
-    // update in MongoDB
-    const updatedUser = await UserCollection.findOneAndUpdate(
-      { uid: uid },
-      { role: role },
-      { new: true }
-    );
-
-    if (!updatedUser) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    res.json({
-      message: "Role updated successfully",
-      user: updatedUser,
+    //for checking userRole
+    app.get("/users/:uid", (req, res) => {
+      const { uid } = req.params;
+      const user = UserCollection.findOne({ uid: uid });
+      if (!user) {
+        return res.status(404).send("User not found");
+      } else {
+        return res.send(user);
+      }
     });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
 
+    //for updating User Role
+    app.put("/users/:uid/role", async (req, res) => {
+      const { uid } = req.params;
+      const { role } = req.body;
 
+      const result = await UserCollection.updateOne(
+        { uid: uid },
+        { $set: { role: role } }
+      );
 
+      if (result.matchedCount === 0) {
+        return res.status(404).send({ message: "User not found" });
+      }
 
-
-
+      res.send({ message: "Role updated successfully" });
+    });
   } finally {
     // await client.close(); // Ensures that the client will close when you finish/error
   }
 }
-
-
 
 run().catch(console.dir);
 
