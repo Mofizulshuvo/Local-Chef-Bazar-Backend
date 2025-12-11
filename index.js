@@ -100,9 +100,9 @@ async function run() {
   //  app.get("/users/:uid", async (req, res) => {
   // const { uid } = req.params;
   
+  //for checking userRole
   app.get("/users/:uid",(req,res)=>{
     const {uid}=req.params;
-     
     const user = UserCollection.findOne({ uid: uid });
     if (!user){
       return res.status(404).send("User not found");
@@ -112,6 +112,34 @@ async function run() {
     }
   })
 
+
+//for updating User Role
+app.put("/users/:uid/role", async (req, res) => {
+  const { uid } = req.params;
+  const { role } = req.body; // expected: "user", "chef", "admin"
+
+  try {
+
+    // update in MongoDB
+    const updatedUser = await UserCollection.findOneAndUpdate(
+      { uid: uid },
+      { role: role },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({
+      message: "Role updated successfully",
+      user: updatedUser,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
 
 
 
