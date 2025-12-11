@@ -4,7 +4,7 @@ const app = express();
 const port = 3000;
 
 app.use(express.json());
-app.use(cors());
+app.use(cors({}));
 
 const { MongoClient, ServerApiVersion } = require("mongodb");
 const uri =
@@ -24,76 +24,24 @@ async function run() {
 
     const DB = client.db("Local-Chef_Bazar");
     await DB.command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    console.log(
+      "Pinged your deployment. You successfully connected to MongoDB!"
+    );
 
     const user_Collection = DB.collection("user");
 
-    // Get all users
     app.get("/users", async (req, res) => {
       const result = await user_Collection.find().toArray();
       res.send(result);
     });
 
-    // Add new user
     app.post("/users", async (req, res) => {
-      try {
-        const newUser = req.body;
-
-        // Check if user already exists
-        const existing = await user_Collection.findOne({ uid: newUser.uid });
-        if (existing) {
-          return res.status(400).send({ message: "User already exists" });
-        }
-
-        const result = await user_Collection.insertOne(newUser);
-        res.send(result);
-        console.log("Inserted user:", newUser);
-      } catch (err) {
-        console.error(err);
-        res.status(500).send({ message: "Error adding user" });
-      }
+      const newUser = req.body;
+      const result = await user_Collection.insertOne(newUser);
+      res.send(result);
+      console.log(newUser);
     });
 
-    // Get single user by UID
-    app.get("/users/:uid", async (req, res) => {
-      try {
-        const { uid } = req.params;
-        console.log("Fetching user with UID:", uid);
-        const user = await user_Collection.findOne({ uid: uid });
-        if (!user) {
-          console.log("User not found for UID:", uid);
-          return res.status(404).send({ message: "User not found" });
-        }
-        res.send(user);
-      } catch (error) {
-        console.error(error);
-        res.status(500).send({ message: "Internal Server Error" });
-      }
-    });
-
-    // Update user role
-    app.put("/users/:uid/role", async (req, res) => {
-      try {
-        const { uid } = req.params;
-        const { role } = req.body;
-
-        const result = await user_Collection.updateOne(
-          { uid: uid },
-          { $set: { role: role } }
-        );
-
-        if (result.matchedCount === 0) {
-          return res.status(404).send({ message: "User not found" });
-        }
-
-        res.send({ message: "Role updated successfully" });
-      } catch (err) {
-        console.error(err);
-        res.status(500).send({ message: "Error updating role" });
-      }
-    });
-
-    // Other collections (meals, orders, reviews, favorites) - no changes
     app.post("/meals", async (req, res) => {
       const meal = req.body;
       const result = await DB.collection("meals").insertOne(meal);
@@ -122,10 +70,12 @@ async function run() {
       res.json({ message: "Review added successfully", id: result.insertedId });
     });
 
+    
     app.get("/reviews", async (req, res) => {
       const reviews = await DB.collection("reviews").find().toArray();
       res.send(reviews);
     });
+
 
     app.post("/favorites", async (req, res) => {
       const favorite = req.body;
@@ -133,10 +83,52 @@ async function run() {
       res.send({ message: "Added to favorites", id: result.insertedId });
     });
 
+
     app.get("/favorites", async (req, res) => {
       const favorites = await DB.collection("favorites").find().toArray();
       res.send(favorites);
     });
+
+
+
+
+    app.get("/users/:uid", async (req, res) => {
+      try {
+        const { uid } = req.params;
+        const user = await user_Collection.findOne({ uid: uid });
+        if (!user) {
+          return res.status(404).send({ message: "User not found" });
+        }
+        else{
+          res.send(user);
+        }
+        
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Internal Server Error" });
+      }
+    });
+
+
+
+
+    app.put("/users/:uid/role", async (req, res) => {
+      const { uid } = req.params;
+      const { role } = req.body;
+
+      const result = await user_Collection.updateOne(
+        { uid: uid },
+        { $set: { role: role } }
+      );
+
+      if (result.matchedCount === 0) {
+        return res.status(404).send({ message: "User not found" });
+      }
+
+      res.send({ message: "Role updated successfully" });
+    });
+
+
 
   } finally {
     // await client.close();
@@ -150,5 +142,5 @@ app.get("/", (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log("Server running on port", port);
+  console.log("Ami toke boltechi ,bissash koro server run kortechee!");
 });
