@@ -142,5 +142,5 @@ app.get("/", (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log("Ami toke boltechi ,bissash koro server run kortechee!");
+  console.log("Ami tomake boltechi bhai,bissash koro server run hoichee!");
 });
