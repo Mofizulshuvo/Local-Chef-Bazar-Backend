@@ -5,10 +5,19 @@ const port = 3000;
 
 app.use(express.json());
 app.use(cors({}));
+require("dotenv").config();
+
+const Admin = require("firebase-admin");
+Admin.initializeApp({
+  credential: Admin.credential.cert({
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+  }),
+});
 
 const { MongoClient, ServerApiVersion } = require("mongodb");
-const uri =
-  "mongodb+srv://Local-Chef-Bazar:1V3HUL6HrRF92Zhx@cluster0.h2qhrdv.mongodb.net/?appName=Cluster0";
+const uri = process.env.MONGODB_URI;
 
 const client = new MongoClient(uri, {
   serverApi: {
@@ -20,6 +29,8 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
+  
+
     await client.connect();
 
     const DB = client.db("Local-Chef_Bazar");
@@ -29,6 +40,41 @@ async function run() {
     );
 
     const user_Collection = DB.collection("user");
+
+
+  const checkTokenAndRole = (requiredRole) => {
+      return async (req, res, next) => {
+        const authHeader = req.headers.authorization;
+        if (!authHeader)
+          return res.status(401).send({ message: "Unauthorized" });
+
+        const token = authHeader.split(" ")[1]; // Bearer <token>
+
+        try {
+          // Verify Firebase token
+          const decoded = await Admin.auth().verifyIdToken(token);
+          req.user = decoded; // save user info
+
+          // If role check is required
+          if (requiredRole) {
+            const user = await DB.collection("user").findOne({
+              uid: decoded.uid,
+            });
+            if (!user)
+              return res.status(404).send({ message: "User not found" });
+
+            if (user.role !== requiredRole)
+              return res.status(403).send({ message: "Access denied" });
+          }
+
+          next();
+        } catch (err) {
+          res.status(401).send({ message: "Invalid token" });
+        }
+      };
+    };
+
+
 
     app.get("/users", async (req, res) => {
       const result = await user_Collection.find().toArray();
@@ -42,7 +88,7 @@ async function run() {
       console.log(newUser);
     });
 
-    app.post("/meals", async (req, res) => {
+    app.post("/meals", checkTokenAndRole("chef"), async (req, res) => {
       const meal = req.body;
       const result = await DB.collection("meals").insertOne(meal);
       res.send({ message: "Meal created successfully", id: result.insertedId });
@@ -70,12 +116,10 @@ async function run() {
       res.json({ message: "Review added successfully", id: result.insertedId });
     });
 
-    
     app.get("/reviews", async (req, res) => {
       const reviews = await DB.collection("reviews").find().toArray();
       res.send(reviews);
     });
-
 
     app.post("/favorites", async (req, res) => {
       const favorite = req.body;
@@ -83,14 +127,10 @@ async function run() {
       res.send({ message: "Added to favorites", id: result.insertedId });
     });
 
-
     app.get("/favorites", async (req, res) => {
       const favorites = await DB.collection("favorites").find().toArray();
       res.send(favorites);
     });
-
-
-
 
     app.get("/users/:uid", async (req, res) => {
       try {
@@ -98,19 +138,14 @@ async function run() {
         const user = await user_Collection.findOne({ uid: uid });
         if (!user) {
           return res.status(404).send({ message: "User not found" });
-        }
-        else{
+        } else {
           res.send(user);
         }
-        
       } catch (error) {
         console.error(error);
         res.status(500).send({ message: "Internal Server Error" });
       }
     });
-
-
-
 
     app.put("/users/:uid/role", async (req, res) => {
       const { uid } = req.params;
@@ -127,9 +162,6 @@ async function run() {
 
       res.send({ message: "Role updated successfully" });
     });
-
-
-
   } finally {
     // await client.close();
   }
