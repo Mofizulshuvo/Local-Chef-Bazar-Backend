@@ -82,7 +82,7 @@ async function run() {
     });
 
     app.post("/users", async (req, res) => {
-      const newUser = req.body;
+      const newUser ={...req.body,status:"pending"}
       const result = await user_Collection.insertOne(newUser);
       res.send(result);
       console.log(newUser);
@@ -96,11 +96,14 @@ async function run() {
 
     app.get("/meals", async (req, res) => {
       const meals = await DB.collection("meals").find().toArray();
-      res.json(meals);
+      res.send(meals);
     });
 
+    
+
     app.post("/orders", async (req, res) => {
-      const order = req.body;
+      const a = req.body;
+      const order={...a,orderStatus:"pending"}
       const result = await DB.collection("orders").insertOne(order);
       res.send({ message: "Order placed successfully", id: result.insertedId });
     });
@@ -110,16 +113,63 @@ async function run() {
       res.send(orders);
     });
 
+     app.get("/orders/:uid", async (req, res) => {
+      const {uid}=req.params;
+      const orders = await DB.collection("orders").findOne({uid});
+      res.send(orders);
+    });
+
     app.post("/reviews", async (req, res) => {
       const review = req.body;
       const result = await DB.collection("reviews").insertOne(review);
-      res.json({ message: "Review added successfully", id: result.insertedId });
+      res.send({ message: "Review added successfully", id: result.insertedId });
     });
 
     app.get("/reviews", async (req, res) => {
       const reviews = await DB.collection("reviews").find().toArray();
       res.send(reviews);
     });
+
+    app.get("/reviews/:_id", async(req,res)=>{
+       const id=req.params;
+       const result=await DB.collection("reviews").findOne({id});
+       res.send(result);
+    })
+
+    app.post("/request",async(req,res)=>{
+      const frontEndRequest=req.body;
+      const request={...frontEndRequest,
+                     requestStatus:"pending",
+                     createdAt:new Date(),
+      }
+      const result=await DB.collection("request").insertOne(request);
+      res.send({message:"Request inserted in the database successfully",
+        id:result.insertedId
+      });
+    })
+
+    app.get("/request",async(req,res)=>{
+      const request=await DB.collection("request").find().toArray();
+      res.send(request);
+    })
+
+   app.get("/request/:uid", async (req, res) => {
+  try {
+    const { uid } = req.params;
+
+    const user = await DB.collection("request").findOne({ uid });
+
+    if (!user) {
+      return res.status(404).send({ message: "User not found" });
+    }
+
+    res.send(user);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "Internal Server Error" });
+  }
+});
+
 
     app.post("/favorites", async (req, res) => {
       const favorite = req.body;
