@@ -16,7 +16,7 @@ Admin.initializeApp({
   }),
 });
 
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = process.env.MONGODB_URI;
 
 const client = new MongoClient(uri, {
@@ -29,8 +29,6 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-  
-
     await client.connect();
 
     const DB = client.db("Local-Chef_Bazar");
@@ -41,8 +39,7 @@ async function run() {
 
     const user_Collection = DB.collection("user");
 
-
-  const checkTokenAndRole = (requiredRole) => {
+    const checkTokenAndRole = (requiredRole) => {
       return async (req, res, next) => {
         const authHeader = req.headers.authorization;
         if (!authHeader)
@@ -74,15 +71,13 @@ async function run() {
       };
     };
 
-
-
     app.get("/users", async (req, res) => {
       const result = await user_Collection.find().toArray();
       res.send(result);
     });
 
     app.post("/users", async (req, res) => {
-      const newUser ={...req.body,status:"pending"}
+      const newUser = { ...req.body, status: "pending" };
       const result = await user_Collection.insertOne(newUser);
       res.send(result);
       console.log(newUser);
@@ -98,12 +93,53 @@ async function run() {
       const meals = await DB.collection("meals").find().toArray();
       res.send(meals);
     });
+    app.put("/meals/:id", checkTokenAndRole("chef"), async (req, res) => {
+      try {
+        const mealId = req.params.id;
+        const updateData = req.body;
 
-    
+        if (!mealId || !ObjectId.isValid(mealId))
+          return res.status(400).json({ message: "Invalid meal ID" });
+
+        const result = await DB.collection("meals").updateOne(
+          { _id: new ObjectId(mealId) },
+          { $set: updateData }
+        );
+
+        if (result.matchedCount === 0)
+          return res.status(404).json({ message: "Meal not found" });
+
+        res.json({ message: "Meal updated successfully" });
+      } catch (error) {
+        console.error("PUT /meals/:id error:", error);
+        res.status(500).json({ message: "Server error" });
+      }
+    });
+
+    app.delete("/meals/:id", checkTokenAndRole("chef"), async (req, res) => {
+      try {
+        const mealId = req.params.id;
+
+        if (!mealId || !ObjectId.isValid(mealId))
+          return res.status(400).json({ message: "Invalid meal ID" });
+
+        const result = await DB.collection("meals").deleteOne({
+          _id: new ObjectId(mealId),
+        });
+
+        if (result.deletedCount === 0)
+          return res.status(404).json({ message: "Meal not found" });
+
+        res.json({ message: "Meal deleted successfully" });
+      } catch (error) {
+        console.error("DELETE /meals/:id error:", error);
+        res.status(500).json({ message: "Server error" });
+      }
+    });
 
     app.post("/orders", async (req, res) => {
       const a = req.body;
-      const order={...a,orderStatus:"pending"}
+      const order = { ...a, orderStatus: "pending" };
       const result = await DB.collection("orders").insertOne(order);
       res.send({ message: "Order placed successfully", id: result.insertedId });
     });
@@ -113,9 +149,9 @@ async function run() {
       res.send(orders);
     });
 
-     app.get("/orders/:uid", async (req, res) => {
-      const {uid}=req.params;
-      const orders = await DB.collection("orders").findOne({uid});
+    app.get("/orders/:uid", async (req, res) => {
+      const { uid } = req.params;
+      const orders = await DB.collection("orders").findOne({ uid });
       res.send(orders);
     });
 
@@ -130,46 +166,61 @@ async function run() {
       res.send(reviews);
     });
 
-    app.get("/reviews/:_id", async(req,res)=>{
-       const id=req.params;
-       const result=await DB.collection("reviews").findOne({id});
-       res.send(result);
-    })
+    app.get("/reviews/:_id", async (req, res) => {
+      const id = req.params;
+      const result = await DB.collection("reviews").findOne({ id });
+      res.send(result);
+    });
 
-    app.post("/request",async(req,res)=>{
-      const frontEndRequest=req.body;
-      const request={...frontEndRequest,
-                     requestStatus:"pending",
-                     createdAt:new Date(),
-      }
-      const result=await DB.collection("request").insertOne(request);
-      res.send({message:"Request inserted in the database successfully",
-        id:result.insertedId
+    app.post("/websiteReview", async (req, res) => {
+      const review = req.body;
+      const result = await DB.collection("websiteReviews").insertOne(review);
+      res.send(result);
+    });
+
+    app.get("/websiteReview", async (req, res) => {
+      const result = await websiteReviewCollection
+        .find()
+        .sort({ createdAt: 1 })
+        .toArray();
+      res.send(result);
+    });
+
+    app.post("/request", async (req, res) => {
+      const frontEndRequest = req.body;
+      const request = {
+        ...frontEndRequest,
+        requestStatus: "pending",
+        createdAt: new Date(),
+      };
+      const result = await DB.collection("request").insertOne(request);
+      res.send({
+        message: "Request inserted in the database successfully",
+        id: result.insertedId,
       });
-    })
+    });
 
-    app.get("/request",async(req,res)=>{
-      const request=await DB.collection("request").find().toArray();
+    app.get("/request", async (req, res) => {
+      const request = await DB.collection("request").find().toArray();
       res.send(request);
-    })
+    });
 
-   app.get("/request/:uid", async (req, res) => {
-  try {
-    const { uid } = req.params;
+    app.get("/request/:uid", async (req, res) => {
+      try {
+        const { uid } = req.params;
 
-    const user = await DB.collection("request").findOne({ uid });
+        const user = await DB.collection("request").findOne({ uid });
 
-    if (!user) {
-      return res.status(404).send({ message: "User not found" });
-    }
+        if (!user) {
+          return res.status(404).send({ message: "User not found" });
+        }
 
-    res.send(user);
-  } catch (error) {
-    console.error(error);
-    res.status(500).send({ message: "Internal Server Error" });
-  }
-});
-
+        res.send(user);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Internal Server Error" });
+      }
+    });
 
     app.post("/favorites", async (req, res) => {
       const favorite = req.body;
@@ -181,6 +232,30 @@ async function run() {
       const favorites = await DB.collection("favorites").find().toArray();
       res.send(favorites);
     });
+
+   app.delete("/favorites/:mealId", checkTokenAndRole("user"), async (req, res) => {
+  try {
+    const { mealId } = req.params;
+    const userEmail = req.user?.email; 
+
+    if (!mealId) return res.status(400).send({ message: "Meal ID is required" });
+    if (!userEmail) return res.status(400).send({ message: "User email not found" });
+
+    const result = await DB.collection("favorites").deleteOne({
+      mealId: mealId,
+      userEmail: userEmail,
+    });
+
+    if (result.deletedCount === 0)
+      return res.status(404).send({ message: "Favorite not found" });
+
+    res.json({ message: "Favorite deleted successfully" });
+  } catch (err) {
+    console.error("DELETE /favorites/:mealId error:", err);
+    res.status(500).send({ message: "Server error" });
+  }
+});
+
 
     app.get("/users/:uid", async (req, res) => {
       try {
