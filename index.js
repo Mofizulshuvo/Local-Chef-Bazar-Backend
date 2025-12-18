@@ -155,6 +155,33 @@ async function run() {
       res.send(orders);
     });
 
+    app.put("/orders/:id", checkTokenAndRole("chef"), async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { orderStatus } = req.body;
+
+        if (!id || !orderStatus) {
+          return res
+            .status(400)
+            .json({ message: "Order ID and status required" });
+        }
+
+        const result = await DB.collection("orders").updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { orderStatus: orderStatus } }
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).json({ message: "Order not found" });
+        }
+
+        res.json({ message: `Order status updated to ${orderStatus}` });
+      } catch (err) {
+        console.error("PUT /orders/:id error:", err);
+        res.status(500).json({ message: "Server error" });
+      }
+    });
+
     app.post("/reviews", async (req, res) => {
       const review = req.body;
       const result = await DB.collection("reviews").insertOne(review);
@@ -233,29 +260,34 @@ async function run() {
       res.send(favorites);
     });
 
-   app.delete("/favorites/:mealId", checkTokenAndRole("user"), async (req, res) => {
-  try {
-    const { mealId } = req.params;
-    const userEmail = req.user?.email; 
+    app.delete(
+      "/favorites/:mealId",
+      checkTokenAndRole("user"),
+      async (req, res) => {
+        try {
+          const { mealId } = req.params;
+          const userEmail = req.user?.email;
 
-    if (!mealId) return res.status(400).send({ message: "Meal ID is required" });
-    if (!userEmail) return res.status(400).send({ message: "User email not found" });
+          if (!mealId)
+            return res.status(400).send({ message: "Meal ID is required" });
+          if (!userEmail)
+            return res.status(400).send({ message: "User email not found" });
 
-    const result = await DB.collection("favorites").deleteOne({
-      mealId: mealId,
-      userEmail: userEmail,
-    });
+          const result = await DB.collection("favorites").deleteOne({
+            mealId: mealId,
+            userEmail: userEmail,
+          });
 
-    if (result.deletedCount === 0)
-      return res.status(404).send({ message: "Favorite not found" });
+          if (result.deletedCount === 0)
+            return res.status(404).send({ message: "Favorite not found" });
 
-    res.json({ message: "Favorite deleted successfully" });
-  } catch (err) {
-    console.error("DELETE /favorites/:mealId error:", err);
-    res.status(500).send({ message: "Server error" });
-  }
-});
-
+          res.json({ message: "Favorite deleted successfully" });
+        } catch (err) {
+          console.error("DELETE /favorites/:mealId error:", err);
+          res.status(500).send({ message: "Server error" });
+        }
+      }
+    );
 
     app.get("/users/:uid", async (req, res) => {
       try {
