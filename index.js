@@ -7,6 +7,9 @@ app.use(express.json());
 app.use(cors({}));
 require("dotenv").config();
 
+const Stripe = require("stripe");
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
 const Admin = require("firebase-admin");
 Admin.initializeApp({
   credential: Admin.credential.cert({
@@ -38,6 +41,7 @@ async function run() {
     );
 
     const user_Collection = DB.collection("user");
+    const websiteReviewCollection = DB.collection("websiteReviews");
 
     const checkTokenAndRole = (requiredRole) => {
       return async (req, res, next) => {
@@ -48,11 +52,9 @@ async function run() {
         const token = authHeader.split(" ")[1]; // Bearer <token>
 
         try {
-          // Verify Firebase token
           const decoded = await Admin.auth().verifyIdToken(token);
-          req.user = decoded; // save user info
+          req.user = decoded;
 
-          // If role check is required
           if (requiredRole) {
             const user = await DB.collection("user").findOne({
               uid: decoded.uid,
@@ -71,6 +73,7 @@ async function run() {
       };
     };
 
+  
     app.get("/users", async (req, res) => {
       const result = await user_Collection.find().toArray();
       res.send(result);
@@ -80,8 +83,104 @@ async function run() {
       const newUser = { ...req.body, status: "pending" };
       const result = await user_Collection.insertOne(newUser);
       res.send(result);
-      console.log(newUser);
     });
+
+  
+    app.put("/request/:_id/accept", async (req, res) => {
+      try {
+        const { _id } = req.params;
+
+        // Find request
+        const request = await DB.collection("request").findOne({
+          _id: new ObjectId(_id),
+        });
+        if (!request)
+          return res.status(404).send({ message: "Request not found" });
+
+        // Update request status
+        await DB.collection("request").updateOne(
+          { _id: new ObjectId(_id) },
+          { $set: { requestStatus: "approved" } }
+        );
+
+        // Update user role
+        await DB.collection("user").updateOne(
+          { uid: request.uid },
+          { $set: { role: request.requestFor } }
+        );
+
+        res.send({ message: "Request approved and user role updated" });
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
+   
+    app.put("/request/:_id/reject", async (req, res) => {
+      try {
+        const { _id } = req.params;
+
+        const request = await DB.collection("request").findOne({
+          _id: new ObjectId(_id),
+        });
+        if (!request)
+          return res.status(404).send({ message: "Request not found" });
+
+        await DB.collection("request").updateOne(
+          { _id: new ObjectId(_id) },
+          { $set: { requestStatus: "rejected" } }
+        );
+
+        res.send({ message: "Request rejected" });
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
+    app.get("/users/:uid", async (req, res) => {
+      try {
+        const { uid } = req.params;
+        const user = await user_Collection.findOne({ uid });
+        if (!user) return res.status(404).send({ message: "User not found" });
+        res.send(user);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Internal Server Error" });
+      }
+    });
+
+    app.put("/users/:uid/role", async (req, res) => {
+      const { uid } = req.params;
+      const { role } = req.body;
+
+      const result = await user_Collection.updateOne(
+        { uid },
+        { $set: { role } }
+      );
+
+      if (result.matchedCount === 0) {
+        return res.status(404).send({ message: "User not found" });
+      }
+
+      res.send({ message: "Role updated successfully" });
+    });
+
+    app.put(
+      "/users/:_id/status",
+      checkTokenAndRole("admin"),
+      async (req, res) => {
+        const { _id } = req.params;
+        const { status } = req.body;
+
+        await user_Collection.updateOne(
+          { _id: new ObjectId(_id) },
+          { $set: { status } }
+        );
+      }
+    );
+
 
     app.post("/meals", checkTokenAndRole("chef"), async (req, res) => {
       const meal = req.body;
@@ -93,6 +192,7 @@ async function run() {
       const meals = await DB.collection("meals").find().toArray();
       res.send(meals);
     });
+
     app.put("/meals/:id", checkTokenAndRole("chef"), async (req, res) => {
       try {
         const mealId = req.params.id;
@@ -137,9 +237,13 @@ async function run() {
       }
     });
 
+
     app.post("/orders", async (req, res) => {
-      const a = req.body;
-      const order = { ...a, orderStatus: "pending" };
+      const order = {
+        ...req.body,
+        orderStatus: "pending",
+        paymentStatus: "pending",
+      };
       const result = await DB.collection("orders").insertOne(order);
       res.send({ message: "Order placed successfully", id: result.insertedId });
     });
@@ -149,10 +253,19 @@ async function run() {
       res.send(orders);
     });
 
-    app.get("/orders/:uid", async (req, res) => {
-      const { uid } = req.params;
-      const orders = await DB.collection("orders").findOne({ uid });
-      res.send(orders);
+
+    app.get("/orders/:email", checkTokenAndRole("user"), async (req, res) => {
+      try {
+        const { email } = req.params;
+        const orders = await DB.collection("orders")
+          .find({ userEmail: email })
+          .sort({ _id: -1 })
+          .toArray();
+        res.send(orders);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Internal Server Error" });
+      }
     });
 
     app.put("/orders/:id", checkTokenAndRole("chef"), async (req, res) => {
@@ -163,17 +276,16 @@ async function run() {
         if (!id || !orderStatus) {
           return res
             .status(400)
-            .json({ message: "Order ID and status required" });
+            .send({ message: "Order ID and status required" });
         }
 
         const result = await DB.collection("orders").updateOne(
           { _id: new ObjectId(id) },
-          { $set: { orderStatus: orderStatus } }
+          { $set: { orderStatus } }
         );
 
-        if (result.matchedCount === 0) {
+        if (result.matchedCount === 0)
           return res.status(404).json({ message: "Order not found" });
-        }
 
         res.json({ message: `Order status updated to ${orderStatus}` });
       } catch (err) {
@@ -182,6 +294,18 @@ async function run() {
       }
     });
 
+    app.put("/orders/payment/:id", async (req, res) => {
+      const { id } = req.params;
+
+      await DB.collection("orders").updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { paymentStatus: "paid" } }
+      );
+
+      res.send({ message: "Payment updated successfully" });
+    });
+
+    // Reviews
     app.post("/reviews", async (req, res) => {
       const review = req.body;
       const result = await DB.collection("reviews").insertOne(review);
@@ -194,14 +318,17 @@ async function run() {
     });
 
     app.get("/reviews/:_id", async (req, res) => {
-      const id = req.params;
-      const result = await DB.collection("reviews").findOne({ id });
+      const id = req.params._id;
+      const result = await DB.collection("reviews").findOne({
+        _id: new ObjectId(id),
+      });
       res.send(result);
     });
 
+
     app.post("/websiteReview", async (req, res) => {
       const review = req.body;
-      const result = await DB.collection("websiteReviews").insertOne(review);
+      const result = await websiteReviewCollection.insertOne(review);
       res.send(result);
     });
 
@@ -213,10 +340,12 @@ async function run() {
       res.send(result);
     });
 
+
+
+
     app.post("/request", async (req, res) => {
-      const frontEndRequest = req.body;
       const request = {
-        ...frontEndRequest,
+        ...req.body,
         requestStatus: "pending",
         createdAt: new Date(),
       };
@@ -228,26 +357,24 @@ async function run() {
     });
 
     app.get("/request", async (req, res) => {
-      const request = await DB.collection("request").find().toArray();
-      res.send(request);
+      const requests = await DB.collection("request").find().toArray();
+      res.send(requests);
     });
 
     app.get("/request/:uid", async (req, res) => {
       try {
         const { uid } = req.params;
-
         const user = await DB.collection("request").findOne({ uid });
-
-        if (!user) {
-          return res.status(404).send({ message: "User not found" });
-        }
-
+        if (!user) return res.status(404).send({ message: "User not found" });
         res.send(user);
       } catch (error) {
         console.error(error);
         res.status(500).send({ message: "Internal Server Error" });
       }
     });
+
+ 
+
 
     app.post("/favorites", async (req, res) => {
       const favorite = req.body;
@@ -274,8 +401,8 @@ async function run() {
             return res.status(400).send({ message: "User email not found" });
 
           const result = await DB.collection("favorites").deleteOne({
-            mealId: mealId,
-            userEmail: userEmail,
+            mealId,
+            userEmail,
           });
 
           if (result.deletedCount === 0)
@@ -289,38 +416,42 @@ async function run() {
       }
     );
 
-    app.get("/users/:uid", async (req, res) => {
-      try {
-        const { uid } = req.params;
-        const user = await user_Collection.findOne({ uid: uid });
-        if (!user) {
-          return res.status(404).send({ message: "User not found" });
-        } else {
-          res.send(user);
-        }
-      } catch (error) {
-        console.error(error);
-        res.status(500).send({ message: "Internal Server Error" });
+
+
+
+    app.post(
+      "/createPaymentSession",
+      checkTokenAndRole("user"),
+      async (req, res) => {
+        const { orderId } = req.body;
+
+        const order = await DB.collection("orders").findOne({
+          _id: new ObjectId(orderId),
+        });
+        if (!order) return res.status(404).send({ message: "Order not found" });
+
+        const session = await stripe.checkout.sessions.create({
+          mode: "payment",
+          payment_method_types: ["card"],
+          line_items: [
+            {
+              price_data: {
+                currency: "usd",
+                product_data: { name: order.mealName }, 
+                unit_amount: parseInt(order.price) * 100, 
+              },
+              quantity: order.quantity || 1,
+            },
+          ],
+          success_url: `${process.env.CLIENT_URL}/paymentSuccess?orderId=${orderId}`,
+          cancel_url: `${process.env.CLIENT_URL}/MyOrders`,
+        });
+
+        res.send({ url: session.url });
       }
-    });
-
-    app.put("/users/:uid/role", async (req, res) => {
-      const { uid } = req.params;
-      const { role } = req.body;
-
-      const result = await user_Collection.updateOne(
-        { uid: uid },
-        { $set: { role: role } }
-      );
-
-      if (result.matchedCount === 0) {
-        return res.status(404).send({ message: "User not found" });
-      }
-
-      res.send({ message: "Role updated successfully" });
-    });
+    );
   } finally {
-    // await client.close();
+    // await client.close(); // optional
   }
 }
 
@@ -331,5 +462,5 @@ app.get("/", (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log("Ami tomake boltechi bhai,bissash koro server run hoichee!");
+  console.log("Server is running on port", port);
 });
