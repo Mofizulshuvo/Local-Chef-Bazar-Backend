@@ -73,7 +73,6 @@ async function run() {
       };
     };
 
-  
     app.get("/users", async (req, res) => {
       const result = await user_Collection.find().toArray();
       res.send(result);
@@ -85,7 +84,6 @@ async function run() {
       res.send(result);
     });
 
-  
     app.put("/request/:_id/accept", async (req, res) => {
       try {
         const { _id } = req.params;
@@ -116,7 +114,6 @@ async function run() {
       }
     });
 
-   
     app.put("/request/:_id/reject", async (req, res) => {
       try {
         const { _id } = req.params;
@@ -181,7 +178,6 @@ async function run() {
       }
     );
 
-
     app.post("/meals", checkTokenAndRole("chef"), async (req, res) => {
       const meal = req.body;
       const result = await DB.collection("meals").insertOne(meal);
@@ -192,6 +188,22 @@ async function run() {
       const meals = await DB.collection("meals").find().toArray();
       res.send(meals);
     });
+
+  app.get("/meals/:id", async (req, res) => {
+  try {
+    const id = req.params.id; 
+    const meal = await DB.collection("meals").findOne({
+      _id: new ObjectId(id),
+    });
+
+    if (!meal) return res.status(404).send({ message: "Meal not found" });
+    res.send(meal);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "Server error" });
+  }
+});
+
 
     app.put("/meals/:id", checkTokenAndRole("chef"), async (req, res) => {
       try {
@@ -237,7 +249,6 @@ async function run() {
       }
     });
 
-
     app.post("/orders", async (req, res) => {
       const order = {
         ...req.body,
@@ -252,7 +263,6 @@ async function run() {
       const orders = await DB.collection("orders").find().toArray();
       res.send(orders);
     });
-
 
     app.get("/orders/:email", checkTokenAndRole("user"), async (req, res) => {
       try {
@@ -325,7 +335,6 @@ async function run() {
       res.send(result);
     });
 
-
     app.post("/websiteReview", async (req, res) => {
       const review = req.body;
       const result = await websiteReviewCollection.insertOne(review);
@@ -339,9 +348,6 @@ async function run() {
         .toArray();
       res.send(result);
     });
-
-
-
 
     app.post("/request", async (req, res) => {
       const request = {
@@ -372,9 +378,6 @@ async function run() {
         res.status(500).send({ message: "Internal Server Error" });
       }
     });
-
- 
-
 
     app.post("/favorites", async (req, res) => {
       const favorite = req.body;
@@ -416,9 +419,6 @@ async function run() {
       }
     );
 
-
-
-
     app.post(
       "/createPaymentSession",
       checkTokenAndRole("user"),
@@ -437,8 +437,8 @@ async function run() {
             {
               price_data: {
                 currency: "usd",
-                product_data: { name: order.mealName }, 
-                unit_amount: parseInt(order.price) * 100, 
+                product_data: { name: order.mealName },
+                unit_amount: parseInt(order.price) * 100,
               },
               quantity: order.quantity || 1,
             },
