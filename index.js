@@ -79,66 +79,60 @@ async function run() {
     });
 
     app.post("/users", async (req, res) => {
-      const newUser = { ...req.body, status: "active", chefId:""};
+      const newUser = { ...req.body, status: "active", chefId: "" };
       const result = await user_Collection.insertOne(newUser);
       res.send(result);
     });
 
-   app.put("/request/:_id/accept", async (req, res) => {
-  try {
-    const { _id } = req.params;
+    app.put("/request/:_id/accept", async (req, res) => {
+      try {
+        const { _id } = req.params;
 
-    
-    const request = await DB.collection("request").findOne({
-      _id: new ObjectId(_id),
+        const request = await DB.collection("request").findOne({
+          _id: new ObjectId(_id),
+        });
+        if (!request) {
+          return res.status(404).send({ message: "Request not found" });
+        }
+
+        await DB.collection("request").updateOne(
+          { _id: new ObjectId(_id) },
+          { $set: { requestStatus: "approved" } }
+        );
+
+        const user = await DB.collection("user").findOne({
+          uid: request.uid,
+        });
+        if (!user) {
+          return res.status(404).send({ message: "User not found" });
+        }
+
+        const updateData = {
+          role: request.requestFor,
+        };
+
+        const hasChefId = Boolean(user.chefId?.toString().trim());
+        if (request.requestFor === "chef" && !hasChefId) {
+          updateData.chefId = `CHEF-${user._id
+            .toString()
+            .slice(-6)
+            .toUpperCase()}`;
+        }
+
+        await DB.collection("user").updateOne(
+          { uid: request.uid },
+          { $set: updateData }
+        );
+
+        res.send({
+          message: "Request approved and user role updated",
+          updatedUser: updateData,
+        });
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Server error" });
+      }
     });
-    if (!request) {
-      return res.status(404).send({ message: "Request not found" });
-    }
-
-   
-    await DB.collection("request").updateOne(
-      { _id: new ObjectId(_id) },
-      { $set: { requestStatus: "approved" } }
-    );
-
-
-    const user = await DB.collection("user").findOne({
-      uid: request.uid,
-    });
-    if (!user) {
-      return res.status(404).send({ message: "User not found" });
-    }
-
-   
-    const updateData = {
-      role: request.requestFor,
-    };
-
-  
-    const hasChefId = Boolean(user.chefId?.toString().trim());
-    if (request.requestFor === "chef" && !hasChefId) {
-      updateData.chefId = `CHEF-${user._id.toString().slice(-6).toUpperCase()}`;
-    }
-
- 
-    await DB.collection("user").updateOne(
-      { uid: request.uid },
-      { $set: updateData }
-    );
-
-    res.send({
-      message: "Request approved and user role updated",
-      updatedUser: updateData,
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).send({ message: "Server error" });
-  }
-});
-
-
-
 
     app.put("/request/:_id/reject", async (req, res) => {
       try {
@@ -190,8 +184,6 @@ async function run() {
       res.send({ message: "Role updated successfully" });
     });
 
-
-
     app.put(
       "/users/:_id/status",
       checkTokenAndRole("admin"),
@@ -217,21 +209,20 @@ async function run() {
       res.send(meals);
     });
 
-  app.get("/meals/:id", async (req, res) => {
-  try {
-    const id = req.params.id; 
-    const meal = await DB.collection("meals").findOne({
-      _id: new ObjectId(id),
+    app.get("/meals/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const meal = await DB.collection("meals").findOne({
+          _id: new ObjectId(id),
+        });
+
+        if (!meal) return res.status(404).send({ message: "Meal not found" });
+        res.send(meal);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Server error" });
+      }
     });
-
-    if (!meal) return res.status(404).send({ message: "Meal not found" });
-    res.send(meal);
-  } catch (error) {
-    console.error(error);
-    res.status(500).send({ message: "Server error" });
-  }
-});
-
 
     app.put("/meals/:id", checkTokenAndRole("chef"), async (req, res) => {
       try {
@@ -343,17 +334,32 @@ async function run() {
       res.send({ message: "Payment updated successfully" });
     });
 
-   
     app.post("/reviews", async (req, res) => {
       const review = req.body;
       const result = await DB.collection("reviews").insertOne(review);
       res.send({ message: "Review added successfully", id: result.insertedId });
     });
 
-    app.get("/reviews", async (req, res) => {
-      const reviews = await DB.collection("reviews").find().toArray();
+    app.get("/reviews/:id", checkTokenAndRole, async (req, res) => {
+      const id = req.params.id;
+
+      const reviews = await DB.collection("reviews")
+        .find({ userId: id })
+        .toArray();
+
       res.send(reviews);
     });
+
+  app.get("/reviews/:mealId", async (req, res) => {
+  const { mealId } = req.params;
+  const reviews = await DB
+    .collection("reviews")
+    .find({ mealId })
+    .toArray();
+  res.send(reviews);
+});
+
+
 
     app.get("/reviews/:_id", async (req, res) => {
       const id = req.params._id;
@@ -447,37 +453,48 @@ async function run() {
       }
     );
 
-    app.post(
-      "/createPaymentSession",
-      checkTokenAndRole("user"),
-      async (req, res) => {
-        const { orderId } = req.body;
+  app.post("/createPaymentSession", checkTokenAndRole("user"), async (req, res) => {
+  console.log("Request body:", req.body);
+  const { orderId } = req.body;
+  if (!orderId) return res.status(400).send({ message: "Order ID missing" });
 
-        const order = await DB.collection("orders").findOne({
-          _id: new ObjectId(orderId),
-        });
-        if (!order) return res.status(404).send({ message: "Order not found" });
+  let order;
+  try {
+    order = await DB.collection("orders").findOne({ _id: new ObjectId(orderId) });
+  } catch (err) {
+    console.log("Invalid ObjectId:", orderId);
+    return res.status(400).send({ message: "Invalid order ID" });
+  }
 
-        const session = await stripe.checkout.sessions.create({
-          mode: "payment",
-          payment_method_types: ["card"],
-          line_items: [
-            {
-              price_data: {
-                currency: "usd",
-                product_data: { name: order.mealName },
-                unit_amount: parseInt(order.price) * 100,
-              },
-              quantity: order.quantity || 1,
-            },
-          ],
-          success_url: `${process.env.CLIENT_URL}/paymentSuccess?orderId=${orderId}`,
-          cancel_url: `${process.env.CLIENT_URL}/MyOrders`,
-        });
+  if (!order) return res.status(404).send({ message: "Order not found" });
 
-        res.send({ url: session.url });
-      }
-    );
+  console.log("Order found:", order);
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            product_data: { name: order.mealName },
+            unit_amount: parseInt(order.price) * 100,
+          },
+          quantity: order.quantity || 1,
+        },
+      ],
+      success_url: `${process.env.CLIENT_URL}/paymentSuccess?orderId=${orderId}`,
+      cancel_url: `${process.env.CLIENT_URL}/MyOrders`,
+    });
+    console.log("Stripe session created:", session.id);
+    res.send({ url: session.url });
+  } catch (err) {
+    console.error("Stripe error:", err);
+    res.status(400).send({ message: "Stripe session creation failed" });
+  }
+});
+
+
   } finally {
     // await client.close(); // optional
   }
