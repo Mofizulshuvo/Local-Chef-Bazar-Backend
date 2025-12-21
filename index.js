@@ -79,40 +79,66 @@ async function run() {
     });
 
     app.post("/users", async (req, res) => {
-      const newUser = { ...req.body, status: "pending" };
+      const newUser = { ...req.body, status: "active", chefId:"N/A"};
       const result = await user_Collection.insertOne(newUser);
       res.send(result);
     });
 
-    app.put("/request/:_id/accept", async (req, res) => {
-      try {
-        const { _id } = req.params;
+   app.put("/request/:_id/accept", async (req, res) => {
+  try {
+    const { _id } = req.params;
 
-        // Find request
-        const request = await DB.collection("request").findOne({
-          _id: new ObjectId(_id),
-        });
-        if (!request)
-          return res.status(404).send({ message: "Request not found" });
-
-        // Update request status
-        await DB.collection("request").updateOne(
-          { _id: new ObjectId(_id) },
-          { $set: { requestStatus: "approved" } }
-        );
-
-        // Update user role
-        await DB.collection("user").updateOne(
-          { uid: request.uid },
-          { $set: { role: request.requestFor } }
-        );
-
-        res.send({ message: "Request approved and user role updated" });
-      } catch (err) {
-        console.error(err);
-        res.status(500).send({ message: "Server error" });
-      }
+    
+    const request = await DB.collection("request").findOne({
+      _id: new ObjectId(_id),
     });
+    if (!request) {
+      return res.status(404).send({ message: "Request not found" });
+    }
+
+   
+    await DB.collection("request").updateOne(
+      { _id: new ObjectId(_id) },
+      { $set: { requestStatus: "approved" } }
+    );
+
+
+    const user = await DB.collection("user").findOne({
+      uid: request.uid,
+    });
+    if (!user) {
+      return res.status(404).send({ message: "User not found" });
+    }
+
+   
+    const updateData = {
+      role: request.requestFor,
+    };
+
+  
+    const hasChefId = Boolean(user.chefId?.toString().trim());
+    if (request.requestFor === "chef" && !hasChefId) {
+      updateData.chefId = `CHEF-${user._id.toString().slice(-6).toUpperCase()}`;
+    }
+
+ 
+    await DB.collection("user").updateOne(
+      { uid: request.uid },
+      { $set: updateData }
+    );
+
+    res.send({
+      message: "Request approved and user role updated",
+      updatedUser: updateData,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ message: "Server error" });
+  }
+});
+
+
+
 
     app.put("/request/:_id/reject", async (req, res) => {
       try {
@@ -163,6 +189,8 @@ async function run() {
 
       res.send({ message: "Role updated successfully" });
     });
+
+
 
     app.put(
       "/users/:_id/status",
@@ -315,7 +343,7 @@ async function run() {
       res.send({ message: "Payment updated successfully" });
     });
 
-    // Reviews
+   
     app.post("/reviews", async (req, res) => {
       const review = req.body;
       const result = await DB.collection("reviews").insertOne(review);
