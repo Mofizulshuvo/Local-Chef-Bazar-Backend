@@ -79,7 +79,7 @@ async function run() {
     });
 
     app.post("/users", async (req, res) => {
-      const newUser = { ...req.body, status: "active", chefId:"N/A"};
+      const newUser = { ...req.body, status: "active", chefId:""};
       const result = await user_Collection.insertOne(newUser);
       res.send(result);
     });
