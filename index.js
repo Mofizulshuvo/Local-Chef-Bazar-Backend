@@ -420,7 +420,14 @@ async function run() {
     });
 
     app.get("/favorites", async (req, res) => {
-      const favorites = await DB.collection("favorites").find().toArray();
+      const { userEmail } = req.query;
+      let query = {};
+
+      if (userEmail) {
+        query.userEmail = userEmail;
+      }
+
+      const favorites = await DB.collection("favorites").find(query).toArray();
       res.send(favorites);
     });
 
