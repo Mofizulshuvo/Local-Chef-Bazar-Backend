@@ -345,26 +345,23 @@ async function run() {
       res.send({ message: "Review added successfully", id: result.insertedId });
     });
 
-    app.get("/reviews/:id", checkTokenAndRole, async (req, res) => {
-      const id = req.params.id;
+    app.get("/reviews/user/:userId", checkTokenAndRole, async (req, res) => {
+      const { userId } = req.params;
 
       const reviews = await DB.collection("reviews")
-        .find({ userId: id })
+        .find({ userEmail: userId })
         .toArray();
 
       res.send(reviews);
     });
 
-  app.get("/reviews/:mealId", async (req, res) => {
-  const { mealId } = req.params;
-  const reviews = await DB
-    .collection("reviews")
-    .find({ mealId })
-    .toArray();
-  res.send(reviews);
-});
-
-
+    app.get("/reviews/:mealId", async (req, res) => {
+      const { mealId } = req.params;
+      const reviews = await DB.collection("reviews")
+        .find({ mealId })
+        .toArray();
+      res.send(reviews);
+    });
 
     app.get("/reviews/:_id", async (req, res) => {
       const id = req.params._id;
