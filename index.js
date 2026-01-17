@@ -7,6 +7,11 @@ app.use(express.json());
 app.use(cors({}));
 require("dotenv").config();
 
+// Test endpoint
+app.get("/test", (req, res) => {
+  res.send({ message: "Server is working!", timestamp: new Date().toISOString() });
+});
+
 const Stripe = require("stripe");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
